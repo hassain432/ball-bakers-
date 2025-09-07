@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Ball Breaker</title>
+  <style>
+    html, body {
+      margin: 0; padding: 0;
+      background: linear-gradient(to bottom, #2c3e50, #3498db);
+      color: white;
+      font-family: sans-serif;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+      margin: 20px auto;
+      background: radial-gradient(circle, #111, #000);
+      border: 4px solid white;
+      border-radius: 15px;
+    }
+    #ui {
+      text-align: center;
+    }
+    button {
+      margin: 10px;
+      padding: 10px 20px;
+      background: orange;
+      border: none;
+      border-radius: 8px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    #stats span {
+      margin: 0 10px;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game" width="400" height="500"></canvas>
+  <div id="ui">
+    <div id="stats">
+      <span>Score: <span id="score">0</span></span>
+      <span>Stars: <span id="stars">0</span>/3</span>
+      <span>Lives: <span id="lives">3</span></span>
+      <span>Level: <span id="level">1</span></span>
+    </div>
+    <div>
+      <button id="startBtn">Start</button>
+      <button id="pauseBtn">Pause</button>
+      <button id="muteBtn">Mute</button>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+
+    let ball = { x: 200, y: 300, radius: 8, dx: 3, dy: -3 };
+    let paddle = { x: 150, width: 100, height: 10, speed: 7 };
+    let keys = {};
+    let blocks = [];
+    let stars = [];
+    let score = 0;
+    let lives = 3;
+    let level = 1;
+    let collectedStars = 0;
+    let running = false;
+    let paused = false;
+    let muted = false;
+
+    const scoreEl = document.getElementById("score");
+    const starsEl = document.getElementById("stars");
+    const livesEl = document.getElementById("lives");
+    const levelEl = document.getElementById("level");
+
+    function createBlocks() {
+      blocks = [];
+      const rows = 4 + level;
+      const cols = 8;
+      const bw = canvas.width / cols - 4;
+      const bh = 20;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          blocks.push({
+            x: c * (bw + 4),
+            y: 30 + r * (bh + 4),
+            width: bw,
+            height: bh,
+            destroyed: false,
+            color: `hsl(${(r + c) * 25 % 360}, 70%, 50%)`,
+          });
+        }
+      }
+    }
+
+    function createStars() {
+      stars = [
+        { x: 100, y: 200, r: 6, collected: false },
+        { x: 200, y: 150, r: 6, collected: false },
+        { x: 300, y: 100, r: 6, collected: false }
+      ];
+      collectedStars = 0;
+      starsEl.textContent = collectedStars;
+    }
+
+    function resetBall() {
+      const speed = 3 + level * 0.7;
+      ball = {
+        x: canvas.width / 2,
+        y: canvas.height - 60,
+        radius: 8,
+        dx: (Math.random() > 0.5 ? 1 : -1) * speed,
+        dy: -speed
+      };
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Ball
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+      ctx.fillStyle = "red";
+      ctx.fill();
+
+      // Paddle
+      ctx.fillStyle = "white";
+      ctx.fillRect(paddle.x, canvas.height - 20, paddle.width, paddle.height);
+
+      // Blocks
+      blocks.forEach(b => {
+        if (!b.destroyed) {
+          ctx.fillStyle = b.color;
+          ctx.fillRect(b.x, b.y, b.width, b.height);
+        }
+      });
+
+      // Stars
+      stars.forEach(s => {
+        if (!s.collected) {
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+          ctx.fillStyle = "yellow";
+          ctx.fill();
+        }
+      });
+    }
+
+    function update() {
+      if (!running || paused) return;
+
+      // Ball movement
+      ball.x += ball.dx;
+      ball.y += ball.dy;
+
+      // Wall collision
+      if (ball.x < ball.radius || ball.x > canvas.width - ball.radius) ball.dx *= -1;
+      if (ball.y < ball.radius) ball.dy *= -1;
+
+      // Paddle collision
+      if (ball.y + ball.radius >= canvas.height - 20 &&
+          ball.x > paddle.x && ball.x < paddle.x + paddle.width) {
+        ball.dy *= -1;
+      }
+
+      // Bottom collision
+      if (ball.y > canvas.height) {
+        lives--;
+        livesEl.textContent = lives;
+        if (lives <= 0) {
+          alert("Game Over!");
+          running = false;
+          return;
+        }
+        resetBall();
+      }
+
+      // Block collisions
+      blocks.forEach(b => {
+        if (!b.destroyed &&
+            ball.x > b.x && ball.x < b.x + b.width &&
+            ball.y > b.y && ball.y < b.y + b.height) {
+          b.destroyed = true;
+          ball.dy *= -1;
+          score += 10;
+          scoreEl.textContent = score;
+        }
+      });
+
+      // Star collisions
+      stars.forEach(s => {
+        if (!s.collected &&
+            Math.hypot(ball.x - s.x, ball.y - s.y) < ball.radius + s.r) {
+          s.collected = true;
+          collectedStars++;
+          starsEl.textContent = collectedStars;
+        }
+      });
+
+      // Level complete
+      const allDestroyed = blocks.every(b => b.destroyed);
+      if (allDestroyed && collectedStars === 3) {
+        level++;
+        levelEl.textContent = level;
+        createBlocks();
+        createStars();
+        resetBall();
+      }
+
+      // Paddle movement
+      if (keys["ArrowLeft"]) paddle.x -= paddle.speed;
+      if (keys["ArrowRight"]) paddle.x += paddle.speed;
+      paddle.x = Math.max(0, Math.min(paddle.x, canvas.width - paddle.width));
+    }
+
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    document.addEventListener("keydown", e => keys[e.key] = true);
+    document.addEventListener("keyup", e => keys[e.key] = false);
+
+    document.getElementById("startBtn").onclick = () => {
+      if (!running) {
+        running = true;
+        score = 0;
+        lives = 3;
+        level = 1;
+        scoreEl.textContent = score;
+        livesEl.textContent = lives;
+        levelEl.textContent = level;
+        createBlocks();
+        createStars();
+        resetBall();
+      }
+    };
+
+    document.getElementById("pauseBtn").onclick = () => {
+      paused = !paused;
+      document.getElementById("pauseBtn").textContent = paused ? "Resume" : "Pause";
+    };
+
+    document.getElementById("muteBtn").onclick = () => {
+      muted = !muted;
+      document.getElementById("muteBtn").textContent = muted ? "Unmute" : "Mute";
+    };
+
+    loop(); // Start game loop
+  </script>
+</body>
+</html>
